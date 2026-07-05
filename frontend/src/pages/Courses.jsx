@@ -1,46 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HiOutlinePlayCircle, HiOutlineCheckCircle, HiOutlineLockClosed, HiOutlineClock, HiOutlineVideoCamera, HiOutlineDocumentArrowDown } from 'react-icons/hi2';
 import { useNavigate } from 'react-router-dom';
 
-const courses = [
+const defaultCourses = [
   {
     id: 1, title: 'Python for Data Analysis', category: 'Programming',
-    modules: 12, completed: 12, duration: '6 hours', status: 'completed',
+    modules: 3, completed: 0, duration: '6 hours', status: 'not-started',
     description: 'Learn Python basics, data types, functions, and data manipulation with hands-on exercises.',
   },
   {
     id: 2, title: 'SQL Fundamentals', category: 'Database',
-    modules: 10, completed: 10, duration: '5 hours', status: 'completed',
+    modules: 3, completed: 0, duration: '5 hours', status: 'not-started',
     description: 'Master SQL queries, joins, aggregations, and subqueries for data analysis.',
   },
   {
     id: 3, title: 'Advanced Excel & Spreadsheets', category: 'Tools',
-    modules: 8, completed: 8, duration: '4 hours', status: 'completed',
+    modules: 3, completed: 0, duration: '4 hours', status: 'not-started',
     description: 'Pivot tables, VLOOKUP, macros, and advanced formulas for business analysis.',
   },
   {
     id: 4, title: 'Pandas & NumPy Mastery', category: 'Data Science',
-    modules: 14, completed: 10, duration: '7 hours', status: 'in-progress',
+    modules: 3, completed: 0, duration: '7 hours', status: 'not-started',
     description: 'Data manipulation, cleaning, and transformation using Python data libraries.',
   },
   {
     id: 5, title: 'Data Visualization with Matplotlib', category: 'Visualization',
-    modules: 10, completed: 4, duration: '5 hours', status: 'in-progress',
+    modules: 3, completed: 0, duration: '5 hours', status: 'not-started',
     description: 'Create stunning charts, graphs, and visual representations of data.',
   },
   {
     id: 6, title: 'Statistics & Probability', category: 'Math',
-    modules: 15, completed: 0, duration: '8 hours', status: 'not-started',
+    modules: 3, completed: 0, duration: '8 hours', status: 'not-started',
     description: 'Descriptive statistics, probability distributions, hypothesis testing, and more.',
   },
   {
     id: 7, title: 'Tableau Dashboard Design', category: 'Visualization',
-    modules: 12, completed: 0, duration: '6 hours', status: 'locked',
+    modules: 3, completed: 0, duration: '6 hours', status: 'locked',
     description: 'Build interactive business dashboards with Tableau.',
   },
   {
     id: 8, title: 'Machine Learning Basics', category: 'AI/ML',
-    modules: 16, completed: 0, duration: '10 hours', status: 'locked',
+    modules: 3, completed: 0, duration: '10 hours', status: 'locked',
     description: 'Introduction to supervised and unsupervised learning algorithms.',
   },
 ];
@@ -53,9 +53,99 @@ const statusConfig = {
 };
 
 export default function Courses() {
+  const [coursesList, setCoursesList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const navigate = useNavigate();
-  const filtered = filter === 'all' ? courses : courses.filter((c) => c.status === filter);
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      const role = localStorage.getItem('selectedRole') || 'Software Developer';
+      const cachedRole = localStorage.getItem('userCoursesRole');
+      const storedCourses = localStorage.getItem('userCourses');
+
+      if (storedCourses && cachedRole === role) {
+        setCoursesList(JSON.parse(storedCourses));
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${API_URL}/api/courses/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` })
+          },
+          body: JSON.stringify({ role })
+        });
+        const data = await res.json();
+        if (data.success && data.courses && data.courses.length > 0) {
+          const mapped = data.courses.map((c, index) => ({
+            id: c.id,
+            title: c.title,
+            category: c.category,
+            duration: c.duration,
+            description: c.description,
+            modules: 3,
+            completed: 0,
+            status: index === 0 ? 'not-started' : 'locked'
+          }));
+          setCoursesList(mapped);
+          localStorage.setItem('userCourses', JSON.stringify(mapped));
+          localStorage.setItem('userCoursesRole', role);
+        } else {
+          setCoursesList(defaultCourses);
+          localStorage.setItem('userCourses', JSON.stringify(defaultCourses));
+          localStorage.setItem('userCoursesRole', role);
+        }
+      } catch (err) {
+        console.error('Error fetching courses:', err);
+        setCoursesList(defaultCourses);
+        localStorage.setItem('userCourses', JSON.stringify(defaultCourses));
+        localStorage.setItem('userCoursesRole', role);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCourses();
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '4px solid rgba(67, 97, 238, 0.1)',
+          borderTop: '4px solid #4361ee',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '16px'
+        }}></div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+          Generating dynamic courses matching your career roadmap...
+        </p>
+      </div>
+    );
+  }
+
+  const completedCount = coursesList.filter((c) => c.status === 'completed').length;
+  const inProgressCount = coursesList.filter((c) => c.status === 'in-progress').length;
+  const notStartedCount = coursesList.filter((c) => c.status === 'not-started').length;
+  const lockedCount = coursesList.filter((c) => c.status === 'locked').length;
+
+  const filtered = filter === 'all' ? coursesList : coursesList.filter((c) => c.status === filter);
 
   return (
     <div className="animate-fade-in">
@@ -68,19 +158,19 @@ export default function Courses() {
       <div className="stat-grid" style={{ marginBottom: 24 }}>
         <div className="stat-card">
           <div className="stat-icon green"><HiOutlineCheckCircle /></div>
-          <div className="stat-info"><h3>3</h3><p>Completed</p></div>
+          <div className="stat-info"><h3>{completedCount}</h3><p>Completed</p></div>
         </div>
         <div className="stat-card">
           <div className="stat-icon blue"><HiOutlinePlayCircle /></div>
-          <div className="stat-info"><h3>2</h3><p>In Progress</p></div>
+          <div className="stat-info"><h3>{inProgressCount}</h3><p>In Progress</p></div>
         </div>
         <div className="stat-card">
           <div className="stat-icon orange"><HiOutlineClock /></div>
-          <div className="stat-info"><h3>1</h3><p>Not Started</p></div>
+          <div className="stat-info"><h3>{notStartedCount}</h3><p>Not Started</p></div>
         </div>
         <div className="stat-card">
           <div className="stat-icon pink"><HiOutlineLockClosed /></div>
-          <div className="stat-info"><h3>2</h3><p>Locked</p></div>
+          <div className="stat-info"><h3>{lockedCount}</h3><p>Locked</p></div>
         </div>
       </div>
 

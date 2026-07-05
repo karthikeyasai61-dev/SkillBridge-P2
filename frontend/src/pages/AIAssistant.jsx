@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { HiOutlinePaperAirplane } from 'react-icons/hi2';
+import { useNavigate } from 'react-router-dom';
+import { HiOutlineArrowPath, HiOutlinePaperAirplane } from 'react-icons/hi2';
 
 const initialMessages = [
   {
@@ -15,38 +16,102 @@ const quickReplies = [
   'Career roadmap for ML Engineer',
 ];
 
-const aiResponses = {
-  'Skills for Data Analyst': `Great choice! 📊 Here are the key skills you need for a **Data Analyst** role:\n\n**Technical Skills:**\n• SQL & Database Management\n• Python / R for Analysis\n• Data Visualization (Tableau, Power BI)\n• Excel (Advanced)\n• Statistics & Probability\n\n**Soft Skills:**\n• Problem Solving\n• Communication\n• Attention to Detail\n\nWould you like me to assess your current level in these skills? Head over to the **Skills Assessment** page to get started!`,
-  'How to become a Full Stack Developer?': `Excellent goal! 💻 Here's a roadmap for becoming a **Full Stack Developer**:\n\n**Frontend:**\n• HTML, CSS, JavaScript\n• React.js or Vue.js\n• Responsive Design\n\n**Backend:**\n• Node.js / Python / Java\n• REST APIs & GraphQL\n• Authentication & Security\n\n**Database:**\n• SQL (PostgreSQL, MySQL)\n• NoSQL (MongoDB)\n\n**DevOps:**\n• Git & GitHub\n• Docker Basics\n• CI/CD\n\nReady to start? Go to **Career Selection** to set this as your goal!`,
-  'Best Python learning resources': `🐍 Here are the best resources to learn Python:\n\n**Beginner:**\n• Python.org Official Tutorial\n• Automate the Boring Stuff\n• freeCodeCamp Python Course\n\n**Intermediate:**\n• Real Python Tutorials\n• Python Crash Course (Book)\n• LeetCode Easy Problems\n\n**Advanced:**\n• Fluent Python (Book)\n• Design Patterns in Python\n• Open Source Contributions\n\nI can create a personalized roadmap for you. Check out the **Learning Roadmap** section!`,
-  'Career roadmap for ML Engineer': `🤖 Machine Learning Engineer is a high-demand role! Here's what you need:\n\n**Foundation:**\n• Python Programming\n• Linear Algebra & Calculus\n• Statistics & Probability\n\n**Core ML:**\n• Scikit-learn\n• Deep Learning (TensorFlow / PyTorch)\n• Natural Language Processing\n• Computer Vision\n\n**Engineering:**\n• MLOps & Model Deployment\n• Cloud Platforms (AWS/GCP)\n• Data Pipelines\n\nThis is an advanced path. Want me to assess your readiness? Visit **Skills Assessment**!`,
-};
-
 export default function AIAssistant() {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
+  const navigate = useNavigate();
 
-  const sendMessage = (text) => {
-    if (!text.trim()) return;
+  const sendMessage = async (text) => {
+    if (!text.trim() || loading) return;
+    
     const userMsg = { role: 'user', text };
-    const aiReply = {
-      role: 'ai',
-      text: aiResponses[text] || `That's a great question! Based on my analysis, I'd recommend exploring the **Career Selection** page to set your career goal, and then take the **Skills Assessment** to identify your current level. I'll then generate a personalized learning roadmap for you! 🚀`,
-    };
-    setMessages((prev) => [...prev, userMsg, aiReply]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
+    setLoading(true);
+
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const token = localStorage.getItem('token');
+      
+      const res = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify({ message: text }),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = {};
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP error ${res.status}`);
+      }
+
+      const rawText = data.reply || "Sorry, I couldn't process that response.";
+      
+      // Parse RECOMMENDED_ROLES tag
+      let cleanedText = rawText;
+      let recommended = null;
+      const rolesMatch = rawText.match(/\[RECOMMENDED_ROLES:\s*(\[[\s\S]*?\])\]/);
+      if (rolesMatch) {
+        try {
+          recommended = JSON.parse(rolesMatch[1]);
+          cleanedText = rawText.replace(/\[RECOMMENDED_ROLES:[\s\S]*?\]/, '').trim();
+        } catch (e) {
+          console.error('Failed to parse recommended roles:', e);
+        }
+      }
+
+      const aiReply = {
+        role: 'ai',
+        text: cleanedText || "Sorry, I couldn't process that response.",
+      };
+      setMessages((prev) => [...prev, aiReply]);
+
+      if (recommended && recommended.length > 0) {
+        localStorage.setItem('recommendedRoles', JSON.stringify(recommended));
+        setRecommendations(recommended);
+        setShowModal(true);
+      }
+    } catch (err) {
+      console.error(err);
+      const errorReply = {
+        role: 'ai',
+        text: `⚠️ Error: ${err.message || 'Could not connect to the server.'} Please make sure you are logged in and the backend server is running.`,
+      };
+      setMessages((prev) => [...prev, errorReply]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="animate-fade-in">
       <div className="chat-container">
-        <div className="chat-messages">
+        <div className="chat-messages" style={{ overflowY: 'auto', maxHeight: '55vh' }}>
           {messages.map((msg, i) => (
             <div key={i} className={`chat-message ${msg.role === 'ai' ? 'ai' : 'user'}`}>
-              <div className="chat-avatar">{msg.role === 'ai' ? 'AI' : 'JD'}</div>
+              <div className="chat-avatar">{msg.role === 'ai' ? 'AI' : 'ME'}</div>
               <div className="chat-bubble" style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
             </div>
           ))}
+          {loading && (
+            <div className="chat-message ai">
+              <div className="chat-avatar">AI</div>
+              <div className="chat-bubble" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)' }}>
+                <HiOutlineArrowPath className="animate-spin" /> Thinking...
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick Replies */}
@@ -56,6 +121,7 @@ export default function AIAssistant() {
               key={i}
               className="btn btn-outline btn-sm"
               onClick={() => sendMessage(reply)}
+              disabled={loading}
             >
               {reply}
             </button>
@@ -67,14 +133,89 @@ export default function AIAssistant() {
             className="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask me anything about your career..."
+            placeholder={loading ? "AI is thinking..." : "Ask me anything about your career..."}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
+            disabled={loading}
           />
-          <button className="chat-send-btn" onClick={() => sendMessage(input)}>
+          <button 
+            className="chat-send-btn" 
+            onClick={() => sendMessage(input)} 
+            disabled={loading || !input.trim()}
+          >
             <HiOutlinePaperAirplane />
           </button>
         </div>
       </div>
+
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '20px',
+            padding: '32px',
+            maxWidth: '460px',
+            width: '90%',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(67, 97, 238, 0.1)',
+              color: '#4361ee',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              fontSize: '2rem'
+            }}>
+              ✨
+            </div>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>
+              AI Path Recommendation
+            </h3>
+            <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
+              Based on our conversation, the AI recommends that you explore:
+              <span style={{ fontSize: '1.2rem', color: '#4361ee', display: 'block', marginTop: '8px', fontWeight: 700 }}>
+                {recommendations.join(', ')}
+              </span>
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button 
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '12px', borderRadius: '10px' }}
+                onClick={() => {
+                  setShowModal(false);
+                  navigate('/career-selection');
+                }}
+              >
+                Go to Career Selection
+              </button>
+              <button 
+                className="btn btn-outline"
+                style={{ width: '100%', padding: '12px', borderRadius: '10px' }}
+                onClick={() => setShowModal(false)}
+              >
+                Continue Chatting
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

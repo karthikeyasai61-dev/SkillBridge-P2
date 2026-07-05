@@ -17,16 +17,24 @@ const statusColor = {
 export default function Roadmap() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { role = 'Software Developer', examResults = [] } = location.state || {};
+
+  // Get role + exam results from navigation state OR localStorage fallback
+  const navState = location.state || {};
+  const role = navState.role
+    || localStorage.getItem('selectedRole')
+    || 'Software Developer';
+  const examResults = navState.examResults || (() => {
+    try { return JSON.parse(localStorage.getItem('lastExamResults') || '[]'); } catch { return []; }
+  })();
 
   const [roadmapStages, setRoadmapStages] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadingText, setLoadingText] = useState("Generating a personalized roadmap to address your specific weaknesses.");
+  const [loadingText, setLoadingText] = useState('Generating a personalized roadmap based on your skills...');
 
   useEffect(() => {
     let timer;
     if (loading) {
-      timer = setTimeout(() => setLoadingText("The AI is experiencing high traffic. Retrying securely in the background..."), 5000);
+      timer = setTimeout(() => setLoadingText('AI is crafting your step-by-step path… almost done!'), 5000);
     }
     return () => clearTimeout(timer);
   }, [loading]);
@@ -34,6 +42,20 @@ export default function Roadmap() {
   const examResultsStr = JSON.stringify(examResults);
 
   useEffect(() => {
+    // Check if a cached roadmap exists for this role
+    const cacheKey = `roadmapStages_${role}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.length > 0) {
+          setRoadmapStages(parsed);
+          setLoading(false);
+          return;
+        }
+      } catch {}
+    }
+
     const fetchRoadmap = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -47,8 +69,24 @@ export default function Roadmap() {
           body: JSON.stringify({ role, examResults })
         });
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.roadmap?.length > 0) {
           setRoadmapStages(data.roadmap);
+          localStorage.setItem(cacheKey, JSON.stringify(data.roadmap));
+
+          // Log activity
+          let activities = [];
+          try {
+            const stored = localStorage.getItem('recentActivities');
+            if (stored) activities = JSON.parse(stored);
+          } catch (e) {}
+          const newAct = {
+            text: `Generated personalized learning roadmap for ${role}`,
+            time: 'Just now',
+            color: 'pink',
+            timestamp: Date.now()
+          };
+          activities = [newAct, ...activities.filter(a => a.text !== newAct.text)];
+          localStorage.setItem('recentActivities', JSON.stringify(activities.slice(0, 10)));
         } else {
           setRoadmapStages([]);
         }
@@ -66,9 +104,9 @@ export default function Roadmap() {
   if (loading) {
     return (
       <div className="animate-fade-in" style={{ textAlign: 'center', padding: '100px 0' }}>
-        <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40, border: '4px solid #f1f3f9', borderTopColor: '#06d6a0', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40, border: '4px solid rgba(255, 255, 255, 0.1)', borderTopColor: '#06d6a0', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
         <h3>Analyzing Your Exam Results...</h3>
-        <p style={{ color: '#6b7280' }}>{loadingText}</p>
+        <p style={{ color: 'var(--text-secondary)' }}>{loadingText}</p>
       </div>
     );
   }
@@ -101,8 +139,8 @@ export default function Roadmap() {
       {/* Progress overview */}
       <div className="card" style={{ marginBottom: 28, padding: '16px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-            Overall Progress: <strong style={{ color: '#1a1d2e' }}>Stage {currentStage} of {totalStages}</strong>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Overall Progress: <strong style={{ color: 'var(--text-primary)' }}>Stage {currentStage} of {totalStages}</strong>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <span className="badge-tag green">{completedCount} Completed</span>
@@ -120,7 +158,7 @@ export default function Roadmap() {
         {/* Vertical line */}
         <div style={{
           position: 'absolute', left: 15, top: 0, bottom: 0, width: 3,
-          background: 'linear-gradient(180deg, #06d6a0 30%, #4361ee 50%, #e5e7eb 55%)',
+          background: 'linear-gradient(180deg, #06d6a0 30%, #4361ee 50%, var(--border-color) 55%)',
           borderRadius: 4,
         }}></div>
 
@@ -130,7 +168,7 @@ export default function Roadmap() {
             <div style={{
               position: 'absolute', left: -28, top: 4,
               width: 24, height: 24, borderRadius: '50%',
-              background: statusColor[stage.status], border: '3px solid #fff',
+              background: statusColor[stage.status], border: '3px solid var(--bg-body, #000)',
               boxShadow: '0 0 0 3px ' + statusColor[stage.status],
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '0.7rem', color: '#fff', fontWeight: 700,
@@ -142,12 +180,12 @@ export default function Roadmap() {
             {/* Stage Card */}
             <div className="card" style={{
               opacity: stage.status === 'locked' ? 0.6 : 1,
-              borderColor: stage.status === 'in-progress' ? '#4361ee' : undefined,
+              borderColor: stage.status === 'in-progress' ? 'var(--color-primary)' : undefined,
               borderWidth: stage.status === 'in-progress' ? 2 : 1,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div>
-                  <h3 style={{ fontSize: '1.08rem', fontWeight: 600 }}>Stage {stage.stage}: {stage.title}</h3>
+                  <h3 style={{ fontSize: '1.08rem', fontWeight: 600, color: 'var(--text-primary)' }}>Stage {stage.stage}: {stage.title}</h3>
                 </div>
                 <span className={`badge-tag ${stage.status === 'completed' ? 'green' : stage.status === 'in-progress' ? 'blue' : 'gray'}`}>
                   {stage.status === 'completed' ? 'Completed' : stage.status === 'in-progress' ? 'In Progress' : 'Locked'}
@@ -158,19 +196,19 @@ export default function Roadmap() {
                 {stage?.skills?.map((skill, ki) => (
                   <div key={ki} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 14px', borderRadius: 8, background: '#f8f9fc',
+                    padding: '10px 14px', borderRadius: 8, background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-color)',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {statusIcon[skill.status]}
                       <span style={{
                         fontWeight: 500, fontSize: '0.88rem',
-                        color: skill.status === 'locked' ? '#9ca3af' : '#1a1d2e',
+                        color: skill.status === 'locked' ? 'var(--text-muted)' : 'var(--text-primary)',
                         textDecoration: skill.status === 'completed' ? 'line-through' : 'none',
                       }}>
                         {skill.name}
                       </span>
                     </div>
-                    <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{skill.duration}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{skill.duration}</span>
                   </div>
                 ))}
               </div>

@@ -66,8 +66,29 @@ export default function CareerTrainer() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [expandedSection, setExpandedSection] = useState({});
+  const [emailing, setEmailing] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState('');
 
   const token = localStorage.getItem('token');
+
+  const emailRoadmap = async () => {
+    setEmailing(true);
+    setEmailSuccess('');
+    try {
+      const res = await fetch(`${API}/api/email/send-roadmap`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to send email');
+      setEmailSuccess('✅ Roadmap emailed successfully!');
+      setTimeout(() => setEmailSuccess(''), 5000);
+    } catch (err) {
+      setEmailSuccess(`❌ Error: ${err.message}`);
+    } finally {
+      setEmailing(false);
+    }
+  };
 
   // Load existing data on mount
   useEffect(() => {
@@ -116,7 +137,7 @@ export default function CareerTrainer() {
       setActivePhase(0);
       setStep('result');
     } catch (err) {
-      setError(err.message);
+      setError(`⚠️ Error: ${err.message || 'Could not connect to the server.'} Please check if you are logged in and the backend server is running.`);
       setStep('form');
     }
   };
@@ -296,10 +317,48 @@ export default function CareerTrainer() {
             </h1>
             <p className="ct-subtitle">{analysis.totalTimeline && `🗓️ Estimated prep time: ${analysis.totalTimeline}`}</p>
           </div>
+          <button 
+            className="ct-email-btn" 
+            onClick={emailRoadmap} 
+            disabled={emailing} 
+            style={{
+              marginRight: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: '0.88rem',
+              boxShadow: '0 4px 12px rgba(168,85,247,0.2)'
+            }}
+          >
+            {emailing ? 'Sending...' : '📧 Email Roadmap'}
+          </button>
           <button className="ct-restart-btn" onClick={() => { setStep('form'); setAnalysis(null); }}>
             <HiOutlineArrowPath /> New Plan
           </button>
         </div>
+
+        {emailSuccess && (
+          <div style={{
+            background: emailSuccess.startsWith('✅') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+            color: emailSuccess.startsWith('✅') ? '#10b981' : '#ef4444',
+            padding: '10px 16px',
+            borderRadius: 8,
+            marginBottom: 16,
+            fontWeight: 600,
+            fontSize: '0.9rem',
+            textAlign: 'center',
+            border: `1px solid ${emailSuccess.startsWith('✅') ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`
+          }}>
+            {emailSuccess}
+          </div>
+        )}
 
         {/* Progress Bar */}
         <div className="ct-card ct-progress-bar-card">

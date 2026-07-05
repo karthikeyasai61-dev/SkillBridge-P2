@@ -67,6 +67,28 @@ export default function ResumeBuilder() {
     const element = resumeRef.current;
     if (!element) return;
 
+    // Temporarily make the background pure white for high-quality printing
+    const originalBg = element.style.background;
+    element.style.background = '#ffffff';
+
+    // Set resume built status
+    localStorage.setItem('resumeBuilt', 'true');
+
+    // Add recent activity
+    let activities = [];
+    try {
+      const stored = localStorage.getItem('recentActivities');
+      if (stored) activities = JSON.parse(stored);
+    } catch (e) {}
+    const newAct = {
+      text: 'Built and downloaded professional resume',
+      time: 'Just now',
+      color: 'pink',
+      timestamp: Date.now()
+    };
+    activities = [newAct, ...activities.filter(a => a.text !== newAct.text)];
+    localStorage.setItem('recentActivities', JSON.stringify(activities.slice(0, 10)));
+
     const opt = {
       margin: 0,
       filename: `${resume.name.replace(/\s+/g, '_')}_Resume.pdf`,
@@ -75,7 +97,13 @@ export default function ResumeBuilder() {
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(element).save();
+    html2pdf().set(opt).from(element).save().then(() => {
+      // Restore screen style
+      element.style.background = originalBg;
+    }).catch(err => {
+      console.error(err);
+      element.style.background = originalBg;
+    });
   };
 
   const addSkill = () => {
@@ -114,11 +142,11 @@ export default function ResumeBuilder() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {['name', 'email', 'phone', 'location'].map((f) => (
                 <div key={f}>
-                  <label style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>{f}</label>
                   <input
                     value={resume[f]}
                     onChange={(e) => updateField(f, e.target.value)}
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, background: '#f1f3f9', fontSize: '0.88rem', color: '#1a1d2e' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-color)', fontSize: '0.88rem', color: 'var(--text-primary)' }}
                   />
                 </div>
               ))}
@@ -132,7 +160,7 @@ export default function ResumeBuilder() {
               value={resume.summary}
               onChange={(e) => updateField('summary', e.target.value)}
               rows={4}
-              style={{ width: '100%', padding: '12px 14px', borderRadius: 8, background: '#f1f3f9', fontSize: '0.88rem', color: '#1a1d2e', resize: 'vertical' }}
+              style={{ width: '100%', padding: '12px 14px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-color)', fontSize: '0.88rem', color: 'var(--text-primary)', resize: 'vertical' }}
             />
           </div>
 
@@ -152,7 +180,7 @@ export default function ResumeBuilder() {
                 onChange={(e) => setNewSkill(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addSkill()}
                 placeholder="Add a skill..."
-                style={{ flex: 1, padding: '8px 14px', borderRadius: 8, background: '#f1f3f9', fontSize: '0.85rem', color: '#1a1d2e' }}
+                style={{ flex: 1, padding: '8px 14px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-color)', fontSize: '0.85rem', color: 'var(--text-primary)' }}
               />
               <button className="btn btn-primary btn-sm" onClick={addSkill}><HiOutlinePlus /></button>
             </div>
@@ -162,74 +190,90 @@ export default function ResumeBuilder() {
         {/* Preview */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {/* This wrapper is the target for html2pdf */}
-          <div ref={resumeRef} style={{ background: '#fff', width: '100%', height: '100%' }}>
+          <div ref={resumeRef} style={{ background: '#faf8f5', color: '#1e293b', width: '100%', height: '100%' }}>
             
             <div style={{ background: 'linear-gradient(135deg, #4361ee, #7209b7)', padding: '28px 28px 20px', color: '#fff' }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{resume.name}</h2>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.82rem', marginTop: 8, opacity: 0.9 }}>
-              <span>📧 {resume.email}</span>
-              <span>📱 {resume.phone}</span>
-              <span>📍 {resume.location}</span>
-            </div>
-          </div>
-          <div style={{ padding: 28 }}>
-            {/* Summary */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
-                Professional Summary
-              </h4>
-              <p style={{ fontSize: '0.84rem', color: '#6b7280', lineHeight: 1.7 }}>{resume.summary}</p>
-            </div>
-
-            {/* Skills */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
-                Technical Skills
-              </h4>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {resume.skills.map((s) => <span key={s} className="badge-tag gray">{s}</span>)}
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{resume.name}</h2>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.82rem', marginTop: 8, opacity: 0.9 }}>
+                <span>📧 {resume.email}</span>
+                <span>📱 {resume.phone}</span>
+                <span>📍 {resume.location}</span>
               </div>
             </div>
+            <div style={{ padding: 28 }}>
+              {/* Summary */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
+                  Professional Summary
+                </h4>
+                <p style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.7 }}>{resume.summary}</p>
+              </div>
 
-            {/* Education */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
-                Education
-              </h4>
-              {resume.education.map((ed, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <div><strong>{ed.degree}</strong> — {ed.school}</div>
-                  <span style={{ color: '#9ca3af' }}>{ed.year}</span>
+              {/* Skills */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
+                  Technical Skills
+                </h4>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {resume.skills.map((s) => (
+                    <span 
+                      key={s} 
+                      style={{ 
+                        display: 'inline-block', 
+                        background: 'rgba(67, 97, 238, 0.08)', 
+                        color: '#4361ee', 
+                        border: '1px solid rgba(67, 97, 238, 0.15)', 
+                        padding: '3px 8px', 
+                        borderRadius: '5px', 
+                        fontSize: '0.76rem', 
+                        fontWeight: 500 
+                      }}
+                    >
+                      {s}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Projects */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
-                Projects
-              </h4>
-              {resume.projects.map((p, i) => (
-                <div key={i} style={{ marginBottom: 12 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{p.title}</div>
-                  <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>{p.description}</p>
-                  <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Tech: {p.tech}</span>
-                </div>
-              ))}
-            </div>
+              {/* Education */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
+                  Education
+                </h4>
+                {resume.education.map((ed, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                    <div><strong>{ed.degree}</strong> — {ed.school}</div>
+                    <span style={{ color: '#64748b' }}>{ed.year}</span>
+                  </div>
+                ))}
+              </div>
 
-            {/* Certifications */}
-            <div>
-              <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
-                Certifications
-              </h4>
-              {resume.certifications.map((c, i) => (
-                <div key={i} style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <HiOutlineDocumentText style={{ color: '#4361ee' }} /> {c}
-                </div>
-              ))}
+              {/* Projects */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
+                  Projects
+                </h4>
+                {resume.projects.map((p, i) => (
+                  <div key={i} style={{ marginBottom: 12 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{p.title}</div>
+                    <p style={{ fontSize: '0.8rem', color: '#334155', marginTop: 2 }}>{p.description}</p>
+                    <span style={{ fontSize: '0.72rem', color: '#475569' }}>Tech: {p.tech}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Certifications */}
+              <div>
+                <h4 style={{ fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: 1, color: '#4361ee', fontWeight: 700, marginBottom: 8 }}>
+                  Certifications
+                </h4>
+                {resume.certifications.map((c, i) => (
+                  <div key={i} style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <HiOutlineDocumentText style={{ color: '#4361ee' }} /> {c}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
           </div>
         </div>
       </div>

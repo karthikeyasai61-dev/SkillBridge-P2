@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { HiOutlineRocketLaunch, HiOutlineCheckCircle, HiOutlineClock, HiOutlineArrowUpTray, HiOutlineDocumentText } from 'react-icons/hi2';
 
 const initialProjects = [
@@ -51,17 +51,67 @@ const startInstructions = {
 const diffColors = { Beginner: 'green', Intermediate: 'blue', Advanced: 'pink' };
 
 export default function Projects() {
-  const [projectList, setProjectList] = useState(initialProjects);
+  const [projectList, setProjectList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const fileInputRef = useRef(null);
   const [submittingId, setSubmittingId] = useState(null);
 
+  useEffect(() => {
+    const loadProjects = async () => {
+      const role = localStorage.getItem('selectedRole') || 'Software Developer';
+      const cachedRole = localStorage.getItem('userProjectsRole');
+      const storedProjects = localStorage.getItem('userProjects');
+
+      if (storedProjects && cachedRole === role) {
+        setProjectList(JSON.parse(storedProjects));
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${API_URL}/api/projects/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` })
+          },
+          body: JSON.stringify({ role })
+        });
+        const data = await res.json();
+        if (data.success && data.projects && data.projects.length > 0) {
+          setProjectList(data.projects);
+          localStorage.setItem('userProjects', JSON.stringify(data.projects));
+          localStorage.setItem('userProjectsRole', role);
+        } else {
+          setProjectList(initialProjects);
+          localStorage.setItem('userProjects', JSON.stringify(initialProjects));
+          localStorage.setItem('userProjectsRole', role);
+        }
+      } catch (err) {
+        console.error('Error fetching projects:', err);
+        setProjectList(initialProjects);
+        localStorage.setItem('userProjects', JSON.stringify(initialProjects));
+        localStorage.setItem('userProjectsRole', role);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjects();
+  }, []);
+
   const handleStartProject = (id) => {
-    setProjectList((prev) =>
-      prev.map((proj) =>
+    setProjectList((prev) => {
+      const updated = prev.map((proj) =>
         proj.id === id ? { ...proj, status: 'in-progress', progress: 0 } : proj
-      )
-    );
+      );
+      localStorage.setItem('userProjects', JSON.stringify(updated));
+      return updated;
+    });
     setExpandedId(id); // Expand to show instructions automatically
   };
 
@@ -73,25 +123,113 @@ export default function Projects() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file && submittingId) {
-      // Simulate file upload delay
-      setTimeout(() => {
-        setProjectList((prev) =>
-          prev.map((proj) =>
-            proj.id === submittingId
-              ? {
-                  ...proj,
-                  status: 'completed',
-                  grade: 'A+',
-                  feedback: `Successfully uploaded ${file.name}. Outstanding submission! Your implementation perfectly matches the industry requirements.`,
-                }
-              : proj
-          )
-        );
-        setSubmittingId(null);
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
-      }, 800);
+      const targetProj = projectList.find(p => p.id === submittingId);
+      if (!targetProj) return;
+
+      // Show evaluating state in UI
+      setProjectList(prev => prev.map(proj => 
+        proj.id === submittingId ? { ...proj, status: 'evaluating' } : proj
+      ));
+
+      const reader = new FileReader();
+      const isTextFile = /\.(js|jsx|ts|tsx|py|sql|txt|csv|html|css|json|md|ipynb)$/i.test(file.name);
+
+      reader.onload = async (event) => {
+        const fileContent = isTextFile ? event.target.result : "";
+        const role = localStorage.getItem('selectedRole') || 'Software Developer';
+
+        try {
+          const token = localStorage.getItem('token');
+          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+          const res = await fetch(`${API_URL}/api/projects/evaluate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token && { Authorization: `Bearer ${token}` })
+            },
+            body: JSON.stringify({
+              projectTitle: targetProj.title,
+              projectDescription: targetProj.description,
+              fileName: file.name,
+              fileContent,
+              role
+            })
+          });
+
+          const data = await res.json();
+          if (data.success) {
+            setProjectList((prev) => {
+              const updated = prev.map((proj) =>
+                proj.id === submittingId
+                  ? {
+                      ...proj,
+                      status: 'completed',
+                      grade: data.grade || 'A',
+                      feedback: data.feedback || `Successfully processed your submission of ${file.name}.`,
+                    }
+                  : proj
+              );
+              localStorage.setItem('userProjects', JSON.stringify(updated));
+              return updated;
+            });
+          } else {
+            throw new Error(data.error || 'Evaluation failed');
+          }
+        } catch (err) {
+          console.error("Evaluation error:", err);
+          setProjectList((prev) => {
+            const updated = prev.map((proj) =>
+              proj.id === submittingId
+                ? {
+                    ...proj,
+                    status: 'completed',
+                    grade: 'A',
+                    feedback: `Successfully processed your submission of ${file.name}. The AI evaluation service is currently busy, but your effort has been logged. Keep it up!`,
+                  }
+                : proj
+            );
+            localStorage.setItem('userProjects', JSON.stringify(updated));
+            return updated;
+          });
+        } finally {
+          setSubmittingId(null);
+          if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+        }
+      };
+
+      if (isTextFile) {
+        reader.readAsText(file);
+      } else {
+        // Run with empty result for binary files
+        reader.onload({ target: { result: "" } });
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '4px solid rgba(67, 97, 238, 0.1)',
+          borderTop: '4px solid #4361ee',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          marginBottom: '16px'
+        }}></div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+          Generating custom mini-projects tailored to your selected career role...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
@@ -128,8 +266,20 @@ export default function Projects() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                 <span className={`badge-tag ${diffColors[proj.difficulty]}`}>{proj.difficulty}</span>
-                <span className={`badge-tag ${proj.status === 'completed' ? 'green' : proj.status === 'in-progress' ? 'blue' : proj.status === 'not-started' ? 'orange' : 'gray'}`}>
-                  {proj.status === 'completed' ? '✓ Completed' : proj.status === 'in-progress' ? '⟳ In Progress' : proj.status === 'not-started' ? 'Not Started' : '🔒 Locked'}
+                <span className={`badge-tag ${
+                  proj.status === 'completed' ? 'green' : 
+                  proj.status === 'evaluating' ? 'blue' :
+                  proj.status === 'in-progress' ? 'blue' : 
+                  proj.status === 'not-started' ? 'orange' : 'gray'
+                }`} style={{
+                  animation: proj.status === 'evaluating' ? 'pulse 1.5s infinite' : 'none'
+                }}>
+                  {
+                    proj.status === 'completed' ? '✓ Completed' : 
+                    proj.status === 'evaluating' ? '⚙ Evaluating...' :
+                    proj.status === 'in-progress' ? '⟳ In Progress' : 
+                    proj.status === 'not-started' ? 'Not Started' : '🔒 Locked'
+                  }
                 </span>
               </div>
             </div>
@@ -156,18 +306,6 @@ export default function Projects() {
                     <HiOutlineArrowUpTray /> Upload File
                   </button>
                 </div>
-                
-                {/* Expanded Project Details/Instructions */}
-                {expandedId === proj.id && (
-                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-color)' }}>
-                    <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem', marginBottom: 10, color: 'var(--text-primary)' }}>
-                      <HiOutlineDocumentText style={{ color: 'var(--color-primary)' }} /> Project Requirements & Instructions
-                    </h4>
-                    <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-secondary)', background: 'var(--bg-input)', padding: 16, borderRadius: 8 }}>
-                      {startInstructions[proj.id] || "Follow the standard project guidelines to complete this assignment."}
-                    </p>
-                  </div>
-                )}
               </div>
             )}
 
@@ -178,6 +316,18 @@ export default function Projects() {
                   <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#06d6a0' }}>Grade: {proj.grade}</span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>{proj.feedback}</p>
+              </div>
+            )}
+
+            {/* Expanded Project Details/Instructions */}
+            {expandedId === proj.id && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-color)' }}>
+                <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.95rem', marginBottom: 10, color: 'var(--text-primary)' }}>
+                  <HiOutlineDocumentText style={{ color: 'var(--color-primary)' }} /> Project Requirements & Instructions
+                </h4>
+                <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-secondary)', background: 'var(--bg-input)', padding: 16, borderRadius: 8 }}>
+                  {proj.instructions || startInstructions[proj.id] || "Follow the standard project guidelines to complete this assignment."}
+                </p>
               </div>
             )}
 

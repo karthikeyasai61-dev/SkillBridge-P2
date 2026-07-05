@@ -82,10 +82,67 @@ export default function CourseDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   
-  const course = location.state?.course || { title: `Course ${id}`, description: 'Explore detailed topics for this course.' };
+  const courseId = parseInt(id);
+  const [coursesList, setCoursesList] = useState(() => {
+    try {
+      const stored = localStorage.getItem('userCourses');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const course = coursesList.find(c => c.id === courseId) || location.state?.course || { id: courseId, title: `Course ${id}`, modules: 3, completed: 0, status: 'not-started', description: 'Explore detailed topics for this course.' };
   const topics = generateCourseTopics(course.title);
   
   const [activeTopic, setActiveTopic] = useState(topics[0]);
+
+  const handleCompleteModule = (moduleId) => {
+    const updated = coursesList.map(c => {
+      if (c.id === course.id) {
+        const nextCompleted = Math.max(c.completed, moduleId);
+        const nextStatus = nextCompleted === c.modules ? 'completed' : 'in-progress';
+        
+        // Log course completion
+        if (nextStatus === 'completed' && c.status !== 'completed') {
+          // Log activity
+          let activities = [];
+          try {
+            const stored = localStorage.getItem('recentActivities');
+            if (stored) activities = JSON.parse(stored);
+          } catch (e) {}
+          const newAct = {
+            text: `Completed course: ${c.title}`,
+            time: 'Just now',
+            color: 'green',
+            timestamp: Date.now()
+          };
+          activities = [newAct, ...activities.filter(a => a.text !== newAct.text)];
+          localStorage.setItem('recentActivities', JSON.stringify(activities.slice(0, 10)));
+        }
+
+        return {
+          ...c,
+          completed: nextCompleted,
+          status: nextStatus
+        };
+      }
+      return c;
+    });
+
+    // Unlock next course if the current course was completed
+    const currentIdx = updated.findIndex(c => c.id === course.id);
+    const wasCompleted = updated[currentIdx]?.status === 'completed';
+    const oldWasNotCompleted = course.status !== 'completed';
+    if (wasCompleted && oldWasNotCompleted && currentIdx + 1 < updated.length) {
+      if (updated[currentIdx + 1].status === 'locked') {
+        updated[currentIdx + 1].status = 'not-started';
+      }
+    }
+
+    localStorage.setItem('userCourses', JSON.stringify(updated));
+    setCoursesList(updated);
+  };
 
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
@@ -142,7 +199,22 @@ export default function CourseDetail() {
         <div className="card" style={{ flex: 1, padding: '32px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
             <span className="badge-tag blue">Module {activeTopic.id}</span>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{activeTopic.title}</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{activeTopic.title}</h2>
+            {course.completed >= activeTopic.id ? (
+              <span className="badge-tag green" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                ✓ Completed
+              </span>
+            ) : (
+              activeTopic.id === course.completed + 1 && (
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ marginLeft: 'auto', background: '#06d6a0', borderColor: '#06d6a0', display: 'flex', alignItems: 'center', gap: 4 }}
+                  onClick={() => handleCompleteModule(activeTopic.id)}
+                >
+                  Mark as Completed
+                </button>
+              )
+            )}
           </div>
 
           {/* Reading Content */}

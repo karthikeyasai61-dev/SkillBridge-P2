@@ -2,10 +2,52 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HiOutlineCheckCircle, HiOutlineXCircle } from 'react-icons/hi2';
 
+const fallbackSkills = {
+  categories: [
+    {
+      category: 'Core Fundamentals',
+      skills: [
+        { name: 'Problem Solving', description: 'Breaking down complex tasks' },
+        { name: 'Communication', description: 'Writing and articulating ideas clearly' },
+        { name: 'Version Control (Git)', description: 'Managing code history effectively' },
+        { name: 'Agile Methodologies', description: 'Working in collaborative sprints' }
+      ]
+    },
+    {
+      category: 'Technical Knowledge',
+      skills: [
+        { name: 'Programming Basics', description: 'Understanding variables, loops, types' },
+        { name: 'System Design', description: 'Basic architecture concepts' },
+        { name: 'Database Fundamentals', description: 'Relational vs non-relational databases' },
+        { name: 'API Design', description: 'REST and GraphQL concepts' }
+      ]
+    },
+    {
+      category: 'Practical Application',
+      skills: [
+        { name: 'Debugging', description: 'Finding and fixing errors in code' },
+        { name: 'Testing', description: 'Unit testing and integration testing' },
+        { name: 'Deployment', description: 'Basic CI/CD and cloud platforms' },
+        { name: 'Code Quality', description: 'Writing clean, readable code' }
+      ]
+    },
+    {
+      category: 'Specialization',
+      skills: [
+        { name: 'Frontend Basics', description: 'HTML, CSS, modern JS frameworks' },
+        { name: 'Backend Basics', description: 'Server logic and databases' },
+        { name: 'Security Awareness', description: 'Basic security practices' },
+        { name: 'Performance Optimization', description: 'Improving load times and efficiency' }
+      ]
+    }
+  ]
+};
+
 export default function SkillsAssessment() {
   const [skillCategories, setSkillCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingText, setLoadingText] = useState("Generating essential skills using AI.");
+  const [isFallback, setIsFallback] = useState(false);
 
   useEffect(() => {
     let timer;
@@ -15,10 +57,24 @@ export default function SkillsAssessment() {
     return () => clearTimeout(timer);
   }, [loading]);
 
-  const [assessed, setAssessed] = useState({});
   const navigate = useNavigate();
   const location = useLocation();
-  const role = location.state?.role || 'Software Developer';
+  const role = location.state?.role || localStorage.getItem('selectedRole') || 'Software Developer';
+
+  const [assessed, setAssessed] = useState(() => {
+    try {
+      const stored = localStorage.getItem('assessedSkills');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    if (role) {
+      localStorage.setItem('selectedRole', role);
+    }
+  }, [role]);
 
   useEffect(() => {
     const fetchSkills = async () => {
@@ -34,11 +90,16 @@ export default function SkillsAssessment() {
           body: JSON.stringify({ role })
         });
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.categories && data.categories.length > 0) {
           setSkillCategories(data.categories);
+        } else {
+          setSkillCategories(fallbackSkills.categories);
+          setIsFallback(true);
         }
       } catch (err) {
         console.error('Failed to fetch skills:', err);
+        setSkillCategories(fallbackSkills.categories);
+        setIsFallback(true);
       } finally {
         setLoading(false);
       }
@@ -47,10 +108,14 @@ export default function SkillsAssessment() {
   }, [role]);
 
   const toggle = (name, val) => {
-    setAssessed((prev) => ({ ...prev, [name]: val }));
+    setAssessed((prev) => {
+      const next = { ...prev, [name]: val };
+      localStorage.setItem('assessedSkills', JSON.stringify(next));
+      return next;
+    });
   };
 
-  const totalSkills = skillCategories.reduce((a, c) => a + c.skills?.length, 0) || 0;
+  const totalSkills = skillCategories.reduce((a, c) => a + (c.skills?.length || 0), 0) || 0;
   const answeredCount = Object.keys(assessed).length;
   const knownCount = Object.values(assessed).filter(Boolean).length;
   const knownSkillsList = Object.keys(assessed).filter(k => assessed[k]);
@@ -58,19 +123,9 @@ export default function SkillsAssessment() {
   if (loading) {
     return (
       <div className="animate-fade-in" style={{ textAlign: 'center', padding: '100px 0' }}>
-        <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40, border: '4px solid #f1f3f9', borderTopColor: '#4361ee', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40, border: '4px solid rgba(255, 255, 255, 0.1)', borderTopColor: '#4361ee', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
         <h3>Analyzing the {role} role...</h3>
-        <p style={{ color: '#6b7280' }}>{loadingText}</p>
-      </div>
-    );
-  }
-
-  if (skillCategories.length === 0) {
-    return (
-      <div className="animate-fade-in" style={{ textAlign: 'center', padding: '100px 0' }}>
-        <h3 style={{ fontSize: '1.2rem', color: '#ef476f', marginBottom: 12 }}>AI is currently busy 🤖</h3>
-        <p style={{ color: '#6b7280', marginBottom: 20 }}>The AI failed to generate skills for "{role}" due to high traffic limits. Please try again.</p>
-        <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry Analysis</button>
+        <p style={{ color: 'var(--text-secondary)' }}>{loadingText}</p>
       </div>
     );
   }
@@ -82,19 +137,34 @@ export default function SkillsAssessment() {
         <p>For each required skill below, indicate whether you currently know it or not. Be honest — this helps us create the best roadmap for you!</p>
       </div>
 
+      {isFallback && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.1)',
+          color: '#d97706',
+          border: '1px solid rgba(245, 158, 11, 0.2)',
+          padding: '12px 16px',
+          borderRadius: 8,
+          marginBottom: 20,
+          fontSize: '0.88rem',
+          fontWeight: 500,
+        }}>
+          ⚠️ Offline / Local Mode: Showing standard {role} skills because the server or AI returned an error.
+        </div>
+      )}
+
       {/* Progress */}
       <div className="card" style={{ marginBottom: 24, padding: '16px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>
-              Assessed: <strong style={{ color: '#1a1d2e' }}>{answeredCount}/{totalSkills}</strong>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              Assessed: <strong style={{ color: 'var(--text-primary)' }}>{answeredCount}/{totalSkills}</strong>
             </span>
-            <span style={{ margin: '0 16px', color: '#e5e7eb' }}>|</span>
-            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+            <span style={{ margin: '0 16px', color: 'var(--border-color)' }}>|</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               Known: <strong style={{ color: '#06d6a0' }}>{knownCount}</strong>
             </span>
-            <span style={{ margin: '0 16px', color: '#e5e7eb' }}>|</span>
-            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+            <span style={{ margin: '0 16px', color: 'var(--border-color)' }}>|</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               To Learn: <strong style={{ color: '#ef476f' }}>{answeredCount - knownCount}</strong>
             </span>
           </div>
@@ -106,7 +176,7 @@ export default function SkillsAssessment() {
 
       {skillCategories.map((cat, ci) => (
         <div key={ci} style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: 12, color: '#1a1d2e' }}>{cat.category}</h3>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: 12, color: 'var(--text-primary)' }}>{cat.category}</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
             {cat.skills?.map((skill) => {
               const val = assessed[skill.name];
@@ -122,7 +192,7 @@ export default function SkillsAssessment() {
                   }}
                 >
                   <div style={{ fontWeight: 600, fontSize: '0.92rem', marginBottom: 2 }}>{skill.name}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 12 }}>{skill.description}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 12 }}>{skill.description}</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       className={`btn btn-sm ${val === true ? 'btn-success' : 'btn-secondary'}`}
@@ -151,7 +221,7 @@ export default function SkillsAssessment() {
           <button className="btn btn-primary btn-lg" onClick={() => navigate('/skill-test', { state: { role, knownSkills: knownSkillsList } })}>
             Proceed to Skill Evaluation Test →
           </button>
-          <p style={{ marginTop: 12, fontSize: '0.85rem', color: '#6b7280' }}>
+          <p style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
             You can proceed at any time, but finishing the assessment gives us better context!
           </p>
         </div>
