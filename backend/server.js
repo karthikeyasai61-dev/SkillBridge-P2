@@ -38,7 +38,8 @@ try {
 
   // Cloud Support: Check environment variable first (Base64 encoded JSON recommended)
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-    serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8'));
+    const cleanBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64.replace(/\s+/g, '');
+    serviceAccount = JSON.parse(Buffer.from(cleanBase64, 'base64').toString('utf-8'));
   } 
   // Cloud Support: Raw JSON string or Base64 string (auto-detect)
   else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -48,7 +49,8 @@ try {
       serviceAccount = JSON.parse(raw);
     } else {
       // It's Base64 encoded
-      serviceAccount = JSON.parse(Buffer.from(raw, 'base64').toString('utf-8'));
+      const cleanBase64 = raw.replace(/\s+/g, '');
+      serviceAccount = JSON.parse(Buffer.from(cleanBase64, 'base64').toString('utf-8'));
     }
   } 
   // Local Dev Support: File
